@@ -1,5 +1,7 @@
+import dotenv from 'dotenv';
+import JWT_SECRET from "@repo/backend-common/config";
 import express from "express";
-import jwt from "jsonwebtoken";
+import jwt, { Secret } from "jsonwebtoken";
 import { middleware } from "./middleware.js";
 import {
   CreateRoomSchema,
@@ -9,12 +11,11 @@ import {
 import { prismaClient } from "@repo/database/client";
 import bcrypt from "bcrypt";
 
-
-const JWT_SECRET = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
-
+dotenv.config({ path: "../../../.env" });
 
 const app = express();
 app.use(express.json());
+
 
 app.post("/signup", async (req, res) => {
   const parsedData = CreateUserSchema.safeParse(req.body);
@@ -62,7 +63,6 @@ app.post("/signup", async (req, res) => {
   }
 });
 
-
 app.post("/signin", async (req, res) => {
   const parsedData = SignInSchema.safeParse(req.body);
 
@@ -76,6 +76,11 @@ app.post("/signin", async (req, res) => {
 
   try {
     const { username, password } = parsedData.data;
+
+
+    console.log("THIS THE KEY: ");
+    console.log(JWT_SECRET);
+
 
     const user = await prismaClient.user.findFirst({
       where: {
@@ -99,7 +104,7 @@ app.post("/signin", async (req, res) => {
       });
     }
 
-    const token = jwt.sign({ userId: user.id }, JWT_SECRET);
+    const token = jwt.sign({ userId: user.id }, jwt_key);
 
     res.status(200).json({
       message: "successfully signed in",
@@ -116,22 +121,42 @@ app.post("/signin", async (req, res) => {
   }
 });
 
-app.post("/room", middleware, (req, res) => {
-  const data = CreateRoomSchema.safeParse(req.body);
+app.post("/room", middleware, async (req, res) => {
+  
+  const parsedData = CreateRoomSchema.safeParse(req.body);
 
-  if (!data.success) {
+  if (!parsedData.success) {
     res.json({
       message: "Incorrect inputs",
     });
-
     return;
   }
 
-  //db call
+  try {
+    const userId = req.userId;
 
-  res.json({
-    roomId: 123,
-  });
+    if (!userId) {
+      res.status(401).json({
+        message: "Unauthorized - User ID not found"
+      });
+      return;
+    }
+  
+
+    await prismaClient.room.create({
+      data: {
+        slug: parsedData.data.roomName,
+        adminId: userId
+      }
+    });
+
+    res.status(201).json({
+      message: "Room Created",
+    });
+  } catch (error) {
+    console.log(error);
+  }
 });
 
 app.listen(3001);
+
